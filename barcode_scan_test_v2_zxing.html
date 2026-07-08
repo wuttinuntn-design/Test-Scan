@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ทดสอบสแกนบาร์โค้ด v2 (ZXing)</title>
+<script src="https://unpkg.com/@zxing/library@0.21.3"></script>
+<style>
+  :root{
+    --coral:#E2583E;
+    --teal:#3fa9b4;
+    --bg:#0f1720;
+    --card:#182430;
+    --text:#eef2f5;
+    --muted:#8a97a3;
+    --border:#26333f;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
+    padding:16px;
+  }
+  .wrap{max-width:480px;margin:0 auto;}
+  h1{font-size:20px;margin:4px 0 2px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px;}
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .videoWrap{
+    position:relative;
+    width:100%;
+    border-radius:10px;
+    overflow:hidden;
+    background:#000;
+    aspect-ratio: 4/3;
+  }
+  video{width:100%;height:100%;object-fit:cover;display:block;}
+  .guide{
+    position:absolute;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:85%;
+    height:32%;
+    border:2px solid var(--coral);
+    border-radius:8px;
+    box-shadow:0 0 0 999px rgba(0,0,0,0.35);
+    pointer-events:none;
+  }
+  select{
+    width:100%;
+    margin-top:10px;
+    background:#0f1720;
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:8px 10px;
+    font-size:14px;
+  }
+  .btns{display:flex;gap:10px;margin-top:12px;}
+  button{
+    flex:1;
+    border:none;
+    border-radius:10px;
+    padding:12px;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .btn-start{background:var(--coral);color:#fff;}
+  .btn-stop{background:#2a3641;color:var(--text);}
+  .btn-clear{background:transparent;color:var(--muted);border:1px solid var(--border);flex:0 0 auto;padding:12px 16px;}
+  #status{font-size:13px;color:var(--teal);margin-top:10px;min-height:16px;}
+  .manual{display:flex;gap:8px;margin-top:12px;}
+  .manual input{
+    flex:1;background:#0f1720;border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:10px 12px;font-size:15px;
+  }
+  .manual button{flex:0 0 auto;background:var(--teal);color:#06222a;padding:10px 16px;}
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border);}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;}
+  td.code{font-family:"SF Mono",Consolas,monospace;color:var(--teal);}
+  td.fmt{color:var(--coral);font-size:11px;white-space:nowrap;}
+  td.time{color:var(--muted);font-size:12px;white-space:nowrap;}
+  .empty{color:var(--muted);text-align:center;padding:20px 0;font-size:14px;}
+  .count{display:inline-block;background:var(--coral);color:#fff;font-size:12px;border-radius:20px;padding:2px 10px;margin-left:6px;}
+  .del{color:var(--muted);cursor:pointer;font-size:13px;}
+  .tag{
+    display:inline-block;background:#0f1720;border:1px solid var(--border);
+    color:var(--muted);font-size:11px;border-radius:6px;padding:2px 8px;margin-top:6px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📷 ทดสอบสแกนบาร์โค้ด <span class="tag">v2 · ZXing engine</span></h1>
+  <div class="sub">เวอร์ชันนี้ใช้ ZXing แม่นกว่าสำหรับบาร์โค้ดเส้น (EAN/UPC/Code128)</div>
+
+  <div class="card">
+    <div class="videoWrap">
+      <video id="video" muted playsinline></video>
+      <div class="guide"></div>
+    </div>
+    <select id="cameraSelect"></select>
+    <div class="btns">
+      <button class="btn-start" id="startBtn">เริ่มสแกน</button>
+      <button class="btn-stop" id="stopBtn" style="display:none;">หยุดสแกน</button>
+    </div>
+    <div id="status"></div>
+
+    <div class="manual">
+      <input type="text" id="manualInput" placeholder="พิมพ์เลขบาร์โค้ดแล้วกด Enter" autocomplete="off">
+      <button id="manualBtn">เพิ่ม</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div>รายการที่บันทึก <span class="count" id="countBadge">0</span></div>
+      <button class="btn-clear" id="clearBtn">ล้างทั้งหมด</button>
+    </div>
+    <div id="listArea">
+      <div class="empty">ยังไม่มีรายการ — ลองสแกนหรือพิมพ์ดูครับ</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = ZXing;
+
+// Set hints: prioritize common retail 1D formats + QR
+const hints = new Map();
+hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.ITF,
+  BarcodeFormat.QR_CODE
+]);
+hints.set(DecodeHintType.TRY_HARDER, true);
+
+const codeReader = new BrowserMultiFormatReader(hints);
+let scanning = false;
+let currentDeviceId = null;
+let records = [];
+
+const video = document.getElementById('video');
+const cameraSelect = document.getElementById('cameraSelect');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const listArea = document.getElementById('listArea');
+const countBadge = document.getElementById('countBadge');
+const manualInput = document.getElementById('manualInput');
+const manualBtn = document.getElementById('manualBtn');
+const clearBtn = document.getElementById('clearBtn');
+
+function fmtTime(d){
+  return d.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function addRecord(code, format){
+  if(!code) return;
+  // avoid instant duplicate spam from continuous frame decoding
+  if(records.length && records[0].code === code && (new Date() - records[0].time) < 2000) return;
+  records.unshift({code, format: format || 'MANUAL', time: new Date()});
+  renderList();
+  statusEl.textContent = 'บันทึกแล้ว: ' + code + (format ? ' (' + format + ')' : '');
+  if(navigator.vibrate) navigator.vibrate(80);
+}
+
+function renderList(){
+  countBadge.textContent = records.length;
+  if(records.length === 0){
+    listArea.innerHTML = '<div class="empty">ยังไม่มีรายการ — ลองสแกนหรือพิมพ์ดูครับ</div>';
+    return;
+  }
+  let rows = records.map((r, i) => `
+    <tr>
+      <td class="code">${r.code}</td>
+      <td class="fmt">${r.format}</td>
+      <td class="time">${fmtTime(r.time)}</td>
+      <td class="del" onclick="removeRecord(${i})">ลบ</td>
+    </tr>
+  `).join('');
+  listArea.innerHTML = `
+    <table>
+      <thead><tr><th>บาร์โค้ด</th><th>ชนิด</th><th>เวลา</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function removeRecord(i){
+  records.splice(i, 1);
+  renderList();
+}
+window.removeRecord = removeRecord;
+
+async function listCameras(){
+  try{
+    const devices = await codeReader.listVideoInputDevices();
+    cameraSelect.innerHTML = '';
+    devices.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || ('กล้อง ' + (i+1));
+      cameraSelect.appendChild(opt);
+    });
+    // prefer back camera if labeled
+    const back = devices.find(d => /back|rear|environment/i.test(d.label));
+    currentDeviceId = back ? back.deviceId : (devices[0] && devices[0].deviceId);
+    if(currentDeviceId) cameraSelect.value = currentDeviceId;
+  }catch(err){
+    statusEl.textContent = 'ไม่พบกล้อง: ' + err;
+  }
+}
+
+async function startScan(){
+  try{
+    statusEl.textContent = 'กำลังเปิดกล้อง...';
+    currentDeviceId = cameraSelect.value || currentDeviceId;
+    await codeReader.decodeFromVideoDevice(currentDeviceId, video, (result, err) => {
+      if(result){
+        addRecord(result.getText(), result.getBarcodeFormat ? BarcodeFormat[result.getBarcodeFormat()] : '');
+      }
+      // ignore per-frame NotFoundException, that's normal while searching
+    });
+    scanning = true;
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'block';
+    statusEl.textContent = 'กล้องพร้อมสแกน... เล็งให้บาร์โค้ดเต็มกรอบและอยู่นิ่ง';
+  }catch(err){
+    statusEl.textContent = 'เปิดกล้องไม่ได้: ' + err;
+  }
+}
+
+function stopScan(){
+  codeReader.reset();
+  scanning = false;
+  startBtn.style.display = 'block';
+  stopBtn.style.display = 'none';
+  statusEl.textContent = 'หยุดสแกนแล้ว';
+}
+
+startBtn.addEventListener('click', startScan);
+stopBtn.addEventListener('click', stopScan);
+
+manualBtn.addEventListener('click', () => {
+  const v = manualInput.value.trim();
+  if(v){ addRecord(v, 'MANUAL'); manualInput.value=''; manualInput.focus(); }
+});
+manualInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){
+    const v = manualInput.value.trim();
+    if(v){ addRecord(v, 'MANUAL'); manualInput.value=''; }
+  }
+});
+clearBtn.addEventListener('click', () => {
+  if(records.length && confirm('ล้างรายการทั้งหมด?')){
+    records = [];
+    renderList();
+  }
+});
+
+// init: request permission once to populate device labels, then list
+navigator.mediaDevices.getUserMedia({video:true})
+  .then(stream => {
+    stream.getTracks().forEach(t => t.stop());
+    listCameras();
+  })
+  .catch(err => {
+    statusEl.textContent = 'ต้องอนุญาตกล้องก่อนถึงจะเลือกกล้องได้: ' + err;
+    listCameras();
+  });
+</script>
+</body>
+</html>
